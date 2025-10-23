@@ -1,22 +1,284 @@
-So we want to build a card game 
+0) Project setup
 
-the goal of the game is to have a card game build with TK enter to help learn some of the most pronounced key words in spanish
+Folders
+	•	Create a project folder, e.g., spanish-card-match/
+	•	Inside it, create:
+	•	app.py (main Tkinter app)
+	•	decks/ (holds JSON decks)
+	•	saves/ (holds save files)
+	•	assets/ (optional: icons, etc.)
 
-requirmnets
-game logic
-    1) the game must be able to hold a dictonary key pair like engliahs word to spanish word
-    2) the game must be able to match the spanish translation to the english translation 
-    3) The game must keep track of the ones you have correct and append them from the test bank 
-    4) Once you get the word pair correct, a popup below the word will appear to check if you want to move on or if you still need practice with the work
-    5)if you get all correct Then you get the choice to start again
-    6) the User must be able to save the game 
+Data files
+	•	In decks/, add spanish_basic.json with:
+	•	deck_name (string)
+	•	pairs (list of objects with keys en and es)
+	•	Example structure (not to copy verbatim): a JSON containing “house/casa,” “water/agua,” etc.
 
-save logic
-    1) the game must be able to open differrent windows 
-    2) The game must have variables that can be replaced with differrent traint to prefild once loaded
-    3) the game must be able to write a save file in a specifc locaiton.
-Ui
-    1) The game will have three screens within a window
-    2) the game must transiton from start screen to load screen to game screen
-    3) I will draw a image of what all three screens look like and we will continue from there
+Acceptance check
+	•	You can load the JSON with json.load() in a quick REPL and see the dict structure.
+
+⸻
+
+1) Core data model (GameState)
+
+Goal: A single object that tracks the whole game.
+
+Create a class named GameState with these attributes:
+	•	profile: str (default “Player1”)
+	•	deck_name: str (empty by default)
+	•	all_pairs: list[dict] (full set from the deck, each dict has en, es)
+	•	remaining_pairs: list[dict] (starts as a copy of all_pairs)
+	•	known_pairs: list[dict] (starts empty; grows when user “moves on”)
+
+Create methods
+	1.	reset_from_deck(deck_dict):
+	•	Sets deck_name from deck_dict["deck_name"]
+	•	Sets all_pairs from deck_dict["pairs"]
+	•	Sets remaining_pairs = copy of all_pairs
+	•	Sets known_pairs = []
+	2.	is_finished() -> bool:
+	•	Return True if remaining_pairs is empty.
+	3.	to_dict() -> dict:
+	•	Return a dict with profile, deck_name, remaining_pairs, known_pairs.
+	4.	from_dict(d: dict) -> GameState (as a @staticmethod):
+	•	Build a new GameState using data from a save file.
+	•	Rebuild all_pairs as the union of remaining_pairs + known_pairs (avoid duplicates).
+
+Acceptance checks
+	•	After reset_from_deck, remaining_pairs length equals all_pairs length.
+	•	is_finished() returns True only when remaining_pairs is length 0.
+
+⸻
+
+2) Persistence utilities (no UI yet)
+
+Create these functions
+	1.	load_deck(path: str) -> dict
+	•	Open JSON, return dict.
+	2.	save_game_to(path: str, state: GameState) -> None
+	•	Serialize state.to_dict() to JSON with indentation.
+	3.	load_game_from(path: str) -> GameState
+	•	Read JSON, pass to GameState.from_dict.
+
+Acceptance checks
+	•	Saving then loading yields the same profile, deck_name, and the same sets of pairs (order can differ, content must match).
+
+⸻
+
+3) App shell & navigation (single window, 3 screens)
+
+Create a tk.Tk subclass named App:
+	•	Holds self.state = GameState()
+	•	Holds self.container (a ttk.Frame) for screen swapping
+	•	Has methods:
+	•	clear_screen() — destroys the current screen frame
+	•	show_start()
+	•	show_load()
+	•	show_game()
+
+Navigation requirements
+	•	Start → Load → Game
+	•	Back buttons: Load → Start, Game → Load
+	•	App passes callbacks into screens (e.g., on_new, on_loaded_deck) so screens never directly call global variables.
+
+Acceptance checks
+	•	Launching the app shows the Start screen.
+	•	Clicking “New Game” moves to Load screen.
+	•	After selecting and loading a deck, transitions to Game screen.
+
+⸻
+
+4) Screen 1 — StartScreen
+
+Create a ttk.Frame subclass named StartScreen with:
+	•	A title/subtitle
+	•	Input: Profile name (ttk.Entry) bound to a StringVar defaulting to state.profile
+	•	Buttons:
+	•	“New Game” → calls on_new() and ensures state.profile is updated from the entry
+	•	“Load Save…” → opens a file dialog and, if chosen, loads a save and goes directly to Game (App will provide on_load_save)
+	•	“Quit”
+
+Acceptance checks
+	•	Typing a new profile name persists when moving to next screens.
+	•	“Load Save…” opens a dialog and after choosing a valid file, jumps to Game screen with loaded progress.
+
+⸻
+
+5) Screen 2 — LoadScreen
+
+Create a ttk.Frame subclass named LoadScreen with:
+	•	“Available Decks” section:
+	•	A read-only ttk.Combobox listing all *.json in decks/ (full paths)
+	•	“Load Deck” button → reads JSON, calls a callback with deck dict
+	•	“Existing Saves” section:
+	•	A read-only ttk.Combobox listing all *.json in saves/
+	•	“Load Save” button → reads JSON, creates GameState, passes it back to App via callback
+	•	“Back” button → returns to Start
+
+Acceptance checks
+	•	If there are no decks/saves, the combobox can be empty and the button should warn the user to select something (use a message popup).
+	•	Loading either a deck or a save transitions to the Game screen.
+
+⸻
+
+6) Screen 3 — GameScreen (core game loop)
+
+Create a ttk.Frame subclass named GameScreen with:
+
+6.1 Toolbar
+	•	Buttons:
+	•	“Save” → quick save to saves/<profile>_<deck>.json (sanitize filename)
+	•	“Save As…” → opens a dedicated Toplevel with an entry + “Browse…” (file dialog) + “Save”
+	•	“Back to Load”
+	•	Right-aligned Checkbutton: “Multiple Choice” (BooleanVar). When ON, hide the text entry and show 4 choice buttons.
+
+6.2 Progress row
+	•	ttk.Progressbar whose maximum = total pairs, value = known count
+	•	A label like “Known: X / T | Left: Y”
+	•	Update this whenever a pair moves from remaining to known.
+
+6.3 Card area
+	•	“English:” label (static)
+	•	Big label bound to current_pair["en"]
+	•	Input mode:
+	•	ttk.Entry bound to entry_var, listens for Enter to trigger “Check”
+	•	Multiple choice mode:
+	•	4 buttons labeled with Spanish options
+	•	On click, set entry_var to the chosen text and trigger “Check”
+	•	Options generation: take correct es + up to 3 distinct distractors sampled from other pairs’ es
+
+6.4 Feedback
+	•	A small label for “✅ Correct!” or “❌ Not quite. Try again.”
+
+6.5 Bottom actions
+	•	“Check” (validates the answer)
+	•	“Skip” (moves to next random card without changes)
+
+Game flow functions you must implement (inside GameScreen):
+	1.	_start_round()
+	•	If state.is_finished() → call _handle_all_correct() and return
+	•	Pick a random current_pair from state.remaining_pairs
+	•	Clear entry_var, blank out feedback, update progress, and show UI according to mode (entry vs multiple choice)
+	2.	_update_progress()
+	•	Set progress bar’s maximum = len(state.all_pairs)
+	•	Set value = len(state.known_pairs)
+	•	Update the counts label
+	3.	_refresh_ui()
+	•	If Multiple Choice ON → hide entry, show choice buttons, and call _prepare_choices()
+	•	If OFF → show entry, hide choice buttons
+	4.	_prepare_choices()
+	•	Build a list: [correct_es] + 3 random distinct distractors (or fewer if not enough data)
+	•	Shuffle and set each button’s text accordingly (disable unused buttons if <4 options)
+	5.	choose(idx: int)
+	•	Set entry_var to the chosen option and call check_answer()
+	6.	check_answer()
+	•	Compare entry_var.lower().strip() to current_pair["es"].lower().strip()
+	•	If correct:
+	•	Set feedback to “✅ Correct!”
+	•	Show a Yes/No popup: “Move on (remove from test bank)?”
+	•	If Yes: remove current_pair from remaining_pairs, append it to known_pairs
+	•	If No: do nothing to the lists
+	•	Call next_card()
+	•	If incorrect:
+	•	Set feedback to “❌ Not quite. Try again.”
+	7.	next_card()
+	•	If finished → _handle_all_correct()
+	•	Else → _start_round()
+	8.	_handle_all_correct()
+	•	Popup: “All correct! Start again?”
+	•	If Yes: rebuild from the same deck (reset_from_deck with deck_name and all_pairs) and _start_round()
+	•	If No: call on_restart() (App will route you back to Start)
+
+Save windows
+	•	“Save”:
+	•	Compose default filename: <profile>_<deck>.json (sanitize non-alphanumeric to _)
+	•	Save to saves/
+	•	Popup “Saved to: ”
+	•	“Save As…”:
+	•	Create a Toplevel titled “Save As…”
+	•	Include:
+	•	An entry with a default path in saves/
+	•	A “Browse…” button (file dialog) to choose path
+	•	A “Save” button to write the file and show a success popup, then close the window
+
+Acceptance checks
+	•	Correct answer shows popup; Yes removes it from remaining_pairs, No keeps it.
+	•	Progress bar increases only when a pair moves to known.
+	•	When remaining_pairs is empty, you see the “Start again?” prompt.
+
+⸻
+
+7) Save/Load flows (end-to-end)
+
+Quick Save
+	•	Trigger “Save”
+	•	Confirm file appears in saves/ and JSON contains your current remaining_pairs and known_pairs.
+
+Load Save (Start or Load screen)
+	•	Choose file, load it
+	•	Game screen reflects the loaded counts and remaining items
+
+Acceptance checks
+	•	If you save mid-round and reload, the next round should use the updated remaining_pairs.
+	•	Profile name from Start should carry into the default save filename.
+
+⸻
+
+8) UI states and variables you must wire
+	•	StringVar for profile (Start)
+	•	StringVar for current English prompt
+	•	StringVar for entry text
+	•	StringVar for feedback
+	•	StringVar for counts (“Known: …”)
+	•	BooleanVar for Multiple Choice toggle
+	•	Progressbar maximum and value set in _update_progress()
+
+Pitfalls to avoid
+	•	Don’t mutate all_pairs during play—only remaining_pairs and known_pairs.
+	•	Always check lists exist and have enough items before sampling distractors.
+	•	Normalize strings (strip().lower()) before comparison.
+
+⸻
+
+9) Edge cases & error handling
+	•	No decks found: show a warning when “Load Deck” is clicked with nothing selected.
+	•	No saves found: similar warning for “Load Save”.
+	•	Corrupt JSON: catch exceptions and show an error popup (don’t crash).
+	•	Deck with fewer than 4 words: Multiple Choice should still work (disable extra buttons).
+	•	Duplicate pairs in deck: treat them as separate until removed—better: de-dup as a stretch goal.
+
+⸻
+
+10) Test plan (do these manually)
+	1.	Happy path: Load deck → answer a few correctly (Yes to move on) → progress updates → finish → choose “No” → returns to Start.
+	2.	Keep practicing: answer correctly but choose “No” → same word still appears in future rounds.
+	3.	Incorrect answer: feedback shows “❌” and stays on the same card.
+	4.	Skip: card changes but lists unchanged.
+	5.	Save/Load: play → quick save → quit app → relaunch → Start → “Load Save…” → verify counts and remaining pairs are correct.
+	6.	Multiple Choice: toggle ON → pick correct choice → same behavior as typed answer.
+
+⸻
+
+11) Stretch ideas (after MVP)
+	•	Reverse mode (Spanish → English).
+	•	Spaced repetition weighting (missed words appear more often).
+	•	Audio pronunciation (TTS).
+	•	Deck editor screen (create/edit decks inside the app).
+	•	Per-word stats (attempts, success rate).
+
+⸻
+
+12) What to implement first (order of work)
+	1.	GameState class + persistence functions (Sections 1–2).
+	2.	App shell and StartScreen (Sections 3–4).
+	3.	LoadScreen (Section 5).
+	4.	GameScreen basic version: show English, entry input, Check/Skip, next card (Section 6.1–6.3 + 6.5–6.7).
+	5.	Add save buttons and progress bar (Section 6.1, 6.2).
+	6.	Add Multiple Choice mode (Section 6.3 “multiple choice” + 6.4).
+	7.	Add finish/restart flow (Section 6.8).
+	8.	Run the test plan (Section 10), fix bugs.
+
+⸻
+
+If you want, paste back your first pass at the GameState class (or your screen skeletons) and I’ll review it line-by-line without writing code for you.
 
