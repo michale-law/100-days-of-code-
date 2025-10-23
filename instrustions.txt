@@ -1,0 +1,22 @@
+So we want to build a card game 
+
+the goal of the game is to have a card game build with TK enter to help learn some of the most pronounced key words in spanish
+
+requirmnets
+game logic
+    1) the game must be able to hold a dictonary key pair like engliahs word to spanish word
+    2) the game must be able to match the spanish translation to the english translation 
+    3) The game must keep track of the ones you have correct and append them from the test bank 
+    4) Once you get the word pair correct, a popup below the word will appear to check if you want to move on or if you still need practice with the work
+    5)if you get all correct Then you get the choice to start again
+    6) the User must be able to save the game 
+
+save logic
+    1) the game must be able to open differrent windows 
+    2) The game must have variables that can be replaced with differrent traint to prefild once loaded
+    3) the game must be able to write a save file in a specifc locaiton.
+Ui
+    1) The game will have three screens within a window
+    2) the game must transiton from start screen to load screen to game screen
+    3) I will draw a image of what all three screens look like and we will continue from there
+
