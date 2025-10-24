@@ -1,0 +1,25 @@
+{
+  "deck_name": "Spanish Basics",
+  "pairs": [
+    {
+      "en": "house",
+      "es": "casa"
+    },
+    {
+      "en": "water",
+      "es": "agua"
+    },
+    {
+      "en": "cat",
+      "es": "gato"
+    },
+    {
+      "en": "dog",
+      "es": "perro"
+    },
+    {
+      "en": "food",
+      "es": "comida"
+    }
+  ]
+}
